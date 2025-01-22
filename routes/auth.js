@@ -1,24 +1,31 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
-const User = require("../models/User");
-const { verifyToken } = require("../middlewares/auth");
+const PDFDocument = require("pdfkit");
+const fs = require("fs");
 const multer = require("multer");
+const path = require("path");
 
-// Configure multer to store files in an 'uploads' directory
+const User = require("../models/User");
+const { verifyToken, isAdmin } = require("../middlewares/auth");
+const Sale = require("../models/Sale");
+const Activity = require("../models/Activity");
+const Book = require("../models/Book");
+const Order = require("../models/Order");
+// const uploads = require("../uploads"); // Multer setup
+
+const router = express.Router();
+
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/"); // Directory where files will be stored
+  destination: (req, file, cb) => {
+    cb(null, "books/");
   },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + "-" + file.originalname); // Create a unique filename
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
   },
 });
 
-const upload = multer({ storage: storage });
-
-const router = express.Router();
+const upload = multer({ storage });
 
 router.post("/signup", async (req, res) => {
   const { username, email, password, role } = req.body;
@@ -58,7 +65,10 @@ router.post("/login", async (req, res) => {
 
 router.post("/validate", (req, res) => {
   const authHeader = req.headers["authorization"];
+  console.log("Authorization Header:", authHeader); // Debugging
+
   const token = authHeader && authHeader.split(" ")[1];
+  console.log("Extracted Token:", token); // Debugging
 
   if (!token) {
     return res.status(401).json({ message: "No token provided" });
@@ -69,29 +79,126 @@ router.post("/validate", (req, res) => {
     const decoded = jwt.verify(token, secretKey);
     res.status(200).json({ message: "Token is valid", user: decoded });
   } catch (err) {
+    console.error("Token verification error:", err); // Debugging
     res.status(403).json({ message: "Invalid or expired token" });
   }
 });
 
-router.get("/books", (req, res) => {
-  res.json(books);
+router.get("/dashboard", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const booksListed = await Book.countDocuments({ userId });
+    const booksSold = await Sale.countDocuments({ userId });
+    const earnings = await Sale.aggregate([
+      { $match: { userId } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const recentActivity = await Activity.find({ userId })
+      .sort({ date: -1 })
+      .limit(5);
+
+    res.status(200).json({
+      booksListed,
+      booksSold,
+      earnings: earnings[0]?.total || 0,
+      recentActivity: recentActivity.map((activity) => ({
+        message: activity.message,
+        date: activity.date,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching dashboard data:", error);
+    res.status(500).json({ message: "Failed to fetch dashboard data" });
+  }
 });
 
-router.post("/uploadBook", upload.single("file"), (req, res) => {
-  const { title, author, category, price } = req.body;
-  const file = req.file;
+router.get("/sales-report", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const orders = await Order.find({ userId }); // Fetch orders for the logged-in user
+    if (!orders) {
+      return res.status(404).send({ message: "No sales data found" });
+    }
+    const doc = new PDFDocument();
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'inline; filename="sales-report.pdf"');
+    doc.pipe(res);
+    doc.fontSize(18).text("Sales Report", { align: "center" });
+    doc.moveDown();
+    orders.forEach((order) => {
+      doc.fontSize(12).text(`Order ID: ${order._id}`);
+      doc.text(`Book Title: ${order.bookTitle}`);
+      doc.text(`Quantity Sold: ${order.quantity}`);
+      doc.text(`Price per Item: $${order.price}`);
+      doc.text(`Total: $${order.total}`);
+      doc.moveDown();
+    });
+    doc.end();
+  } catch (error) {
+    console.error("Error generating sales report:", error);
+    res.status(500).send({ message: "Failed to generate sales report" });
+  }
+});
 
-  const newBook = {
-    id: books.length + 1,
-    title,
-    author,
-    category,
-    price,
-    filePath: file.path,
-  };
+router.post("/uploadBook", upload.single("file"), async (req, res) => {
+  try {
+    const { title, author, category, price } = req.body;
+    const file = req.file;
+    const userId = req.user.id;
 
-  books.push(newBook);
-  res.status(201).send(newBook);
+    if (!file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const newBook = new Book({
+      title,
+      author,
+      category,
+      price,
+      filePath: file.path,
+      userId,
+    });
+
+    const savedBook = await newBook.save();
+    const activity = new Activity({
+      userId,
+      message: `Added "${savedBook.title}" to the inventory.`,
+    });
+    await activity.save();
+
+    res.status(201).json(savedBook);
+  } catch (error) {
+    console.error("Error uploading book:", error);
+    res.status(500).json({ message: "Failed to upload book" });
+  }
+});
+
+router.get("/books", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const books = await Book.find({ userId });
+    res.status(200).json(books);
+  } catch (error) {
+    console.error("Error fetching books:", error);
+    res.status(500).json({ message: "Failed to fetch books" });
+  }
+});
+
+router.delete("/book/:id", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const bookId = req.params.id;
+    const deletedBook = await Book.findByIdAndDelete(bookId);
+
+    if (!deletedBook) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+
+    res.status(200).json({ message: "Book deleted successfully", deletedBook });
+  } catch (error) {
+    console.error("Error deleting book:", error);
+    res.status(500).json({ message: "Failed to delete book" });
+  }
 });
 
 module.exports = router;
