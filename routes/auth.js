@@ -12,6 +12,7 @@ const Sale = require("../models/Sale");
 const Activity = require("../models/Activity");
 const Book = require("../models/Book");
 const Order = require("../models/Order");
+const Category = require("../models/Category");
 // const uploads = require("../uploads"); // Multer setup
 
 const router = express.Router();
@@ -88,11 +89,14 @@ router.get("/dashboard", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const booksListed = await Book.countDocuments({ userId });
+    console.log("boksListed" + booksListed);
     const booksSold = await Sale.countDocuments({ userId });
+    console.log("boksSold" + booksSold);
     const earnings = await Sale.aggregate([
       { $match: { userId } },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
+    console.log("earnings" + earnings);
     const recentActivity = await Activity.find({ userId })
       .sort({ date: -1 })
       .limit(5);
@@ -145,11 +149,9 @@ router.post("/uploadBook", upload.single("file"), async (req, res) => {
     const { title, author, category, price } = req.body;
     const file = req.file;
     const userId = req.user.id;
-
     if (!file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
-
     const newBook = new Book({
       title,
       author,
@@ -158,14 +160,12 @@ router.post("/uploadBook", upload.single("file"), async (req, res) => {
       filePath: file.path,
       userId,
     });
-
     const savedBook = await newBook.save();
     const activity = new Activity({
       userId,
       message: `Added "${savedBook.title}" to the inventory.`,
     });
     await activity.save();
-
     res.status(201).json(savedBook);
   } catch (error) {
     console.error("Error uploading book:", error);
@@ -198,6 +198,47 @@ router.delete("/book/:id", verifyToken, isAdmin, async (req, res) => {
   } catch (error) {
     console.error("Error deleting book:", error);
     res.status(500).json({ message: "Failed to delete book" });
+  }
+});
+
+router.get("/getCategories", async (req, res) => {
+  try {
+    const categories = await Category.find();
+    res.status(200).json(categories);
+  } catch (err) {
+    console.error("Error fetching categories:", err);
+    res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+// Add a new category
+router.post("/addCategory", async (req, res) => {
+  const { name } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: "Category name is required" });
+  }
+
+  try {
+    const category = new Category({ name });
+    const savedCategory = await category.save();
+    res.status(201).json(savedCategory);
+  } catch (err) {
+    console.error("Error creating category:", err);
+    res.status(500).json({ error: "Failed to create category" });
+  }
+});
+
+// Delete a category
+router.delete("/deleteCategory/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await Category.findByIdAndDelete(id);
+    res.status(200).json({ message: "Category deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting category:", err);
+    res.status(500).json({ error: "Failed to delete category" });
   }
 });
 
