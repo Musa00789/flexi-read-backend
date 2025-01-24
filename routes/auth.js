@@ -19,13 +19,13 @@ const router = express.Router();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "books/");
+    cb(null, `./uploads/${req.user._id}/`); // Specify upload directory
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+    const uniqueName = `${Date.now()}-${file.originalname}`;
+    cb(null, uniqueName);
   },
 });
-
 const upload = multer({ storage });
 
 router.post("/signup", async (req, res) => {
@@ -144,41 +144,91 @@ router.get("/sales-report", verifyToken, async (req, res) => {
   }
 });
 
-router.post("/uploadBook", upload.single("file"), async (req, res) => {
-  try {
-    const { title, author, category, price } = req.body;
-    const file = req.file;
-    const userId = req.user.id;
-    if (!file) {
-      return res.status(400).json({ message: "No file uploaded" });
-    }
-    const newBook = new Book({
-      title,
-      author,
-      category,
-      price,
-      filePath: file.path,
-      userId,
-    });
-    const savedBook = await newBook.save();
-    const activity = new Activity({
-      userId,
-      message: `Added "${savedBook.title}" to the inventory.`,
-    });
-    await activity.save();
-    res.status(201).json(savedBook);
-  } catch (error) {
-    console.error("Error uploading book:", error);
-    res.status(500).json({ message: "Failed to upload book" });
-  }
-});
+router.post(
+  "/uploadBook",
+  verifyToken,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { title, author, category, price, rating, points } = req.body;
+      const file = req.file;
+      const userId = req.user.id;
 
-router.get("/books", verifyToken, async (req, res) => {
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const newBook = new Book({
+        title,
+        author,
+        category,
+        price,
+        rating,
+        points,
+        filePath: file.path, // Use the actual uploaded file path
+        userId,
+      });
+
+      const savedBook = await newBook.save();
+
+      // Log activity (optional)
+      const activity = new Activity({
+        userId,
+        message: `Added "${savedBook.title}" to the inventory.`,
+      });
+      await activity.save();
+
+      res.status(201).json(savedBook);
+    } catch (error) {
+      console.error("Error uploading book:", error);
+      res.status(500).json({ message: "Failed to upload book" });
+    }
+  }
+);
+
+router.get("/getMyBooks", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
     const books = await Book.find({ userId });
     res.status(200).json(books);
+  } catch (error) {
+    console.error("Error fetching books:", error);
+    res.status(500).json({ message: "Failed to fetch books" });
+  }
+});
+
+// router.get(
+//   "/getAllBooks",
+//   //  verifyToken,
+//   async (req, res) => {
+//     try {
+//       // const userId = req.user.id;
+
+//       const books = await Book.find();
+//       res.status(200).json(books);
+//     } catch (error) {
+//       console.error("Error fetching books:", error);
+//       res.status(500).json({ message: "Failed to fetch books" });
+//     }
+//   }
+// );
+
+router.get("/getAllBooks", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1; // Current page
+    const limit = parseInt(req.query.limit) || 10; // Number of books per page
+    const skip = (page - 1) * limit;
+
+    const books = await Book.find().skip(skip).limit(limit);
+    const totalBooks = await Book.countDocuments();
+
+    res.status(200).json({
+      books,
+      totalBooks,
+      totalPages: Math.ceil(totalBooks / limit),
+      currentPage: page,
+    });
   } catch (error) {
     console.error("Error fetching books:", error);
     res.status(500).json({ message: "Failed to fetch books" });

@@ -14,6 +14,7 @@ const bookSchema = new mongoose.Schema(
     ],
     price: { type: Number, required: true },
     filePath: { type: String, required: true }, // File storage path
+    bookCoverImage: { type: String, required: true },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
