@@ -13,6 +13,7 @@ const bookSchema = new mongoose.Schema(
       },
     ],
     price: { type: Number, required: true },
+    points: { type: Number, required: true },
     filePath: { type: String, required: true }, // File storage path
     bookCoverImage: { type: String, required: true },
     userId: {

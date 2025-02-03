@@ -9,7 +9,7 @@ const saleSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
-  amount: Number, // The price of the book in this sale
+  points: { type: Number, required: true },
   date: {
     type: Date,
     default: Date.now,
