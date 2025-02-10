@@ -121,6 +121,18 @@ router.get("/getUserPoints", verifyToken, async (req, res) => {
   }
 });
 
+router.put("/rewardPoints", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    user.points += parseInt(req.body.points);
+    await user.save();
+    res.status(200).json({ user });
+  } catch (error) {
+    console.log("error", error);
+    res.status(500).json({ message: "Failed to add points" });
+  }
+});
+
 router.post(
   "/uploadProfile/:id",
   // verifyToken,
@@ -314,6 +326,7 @@ router.get("/getAllBooks", async (req, res) => {
     res.status(500).json({ message: "Failed to fetch books" });
   }
 });
+
 router.get("/getBook/:bookId", verifyToken, async (req, res) => {
   try {
     const book = await Book.findById(req.params.bookId);
@@ -326,10 +339,12 @@ router.get("/getBook/:bookId", verifyToken, async (req, res) => {
         ? `${req.protocol}://${req.get("host")}/uploads/${
             book.userId
           }/${path.basename(book.bookCoverImage)}`
-        : null, // If no image, return null (or a placeholder URL)
-      pdfLink: `${req.protocol}://${req.get("host")}/api/books/${
-        book._id
-      }/read`,
+        : null,
+      pdfLink: book.filePath
+        ? `${req.protocol}://${req.get("host")}/uploads/${
+            book.userId
+          }/${path.basename(book.filePath)}`
+        : null,
     };
 
     res.status(200).json(bookWithLinks);
@@ -455,6 +470,7 @@ router.get("/myPurchases", verifyToken, async (req, res) => {
       title: purchase.bookId.title,
       author: purchase.bookId.author,
       status: "Purchased",
+      category: purchase.bookId.category,
       bookCoverImage: `${req.protocol}://${req.get("host")}/uploads/${
         purchase.bookId.userId
       }/${path.basename(purchase.bookId.bookCoverImage)}`,

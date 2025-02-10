@@ -5,12 +5,12 @@ const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  points: { type: Number, default: 0 },
+  points: { type: Number, default: 400 },
   profilePicture: { type: String, default: "" },
   role: {
     type: String,
-    enum: ["user", "admin", "Admin", "User"],
-    default: "user",
+    enum: ["Reader", "admin", "Admin", "reader", "Author", "author"],
+    default: "Reader",
   },
 });
 
