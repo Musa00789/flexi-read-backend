@@ -419,6 +419,9 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
     user.points -= book.points;
     await user.save();
 
+    const seller = await User.findById(book.userId);
+    seller.points += book.points;
+
     // Create new purchase record
     const purchase = new Purchase({
       userId,
@@ -432,9 +435,9 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
       userId,
       points: book.points,
     });
-    sale.save();
+    await sale.save();
+    await seller.save();
 
-    // Return updated points in response
     return res.status(201).json({
       message: "Book purchased successfully.",
       book: {
@@ -446,7 +449,7 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
         id: purchase._id,
         pointsSpent: purchase.pointsSpent,
       },
-      remainingPoints: user.points, // Include remaining points after purchase
+      remainingPoints: user.points,
     });
   } catch (error) {
     console.error("Error purchasing book:", error);
@@ -455,6 +458,42 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
     });
   }
 });
+
+/////////////////////////////////   Not implimented ///////////////////////////////
+router.post("/addReview/:bookId", verifyToken, async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+    const review = new Review({
+      bookId: req.params.bookId,
+      userId: req.user.id,
+      rating,
+      comment,
+    });
+    await review.save();
+    res.status(201).json({ message: "Review added successfully", review });
+  } catch (error) {
+    console.error("Error adding review:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to add review", error: error.message });
+  }
+});
+
+router.get("/getReviews/:bookId", async (req, res) => {
+  try {
+    const reviews = await Review.find({ bookId: req.params.bookId })
+      .populate("userId", "username") // populate user details (only username)
+      .sort({ createdAt: -1 });
+    res.status(200).json(reviews);
+  } catch (error) {
+    console.error("Error fetching reviews:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to fetch reviews", error: error.message });
+  }
+});
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 router.get("/myPurchases", verifyToken, async (req, res) => {
   try {
@@ -484,60 +523,6 @@ router.get("/myPurchases", verifyToken, async (req, res) => {
     return res.status(500).json({ message: "Failed to fetch purchased books" });
   }
 });
-
-// router.put(
-//   "/updateBook/:id",
-//   verifyToken,
-//   upload.fields([{ name: "bookCoverImage", maxCount: 1 }]),
-//   async (req, res) => {
-//     try {
-//       const { title, author, category, price } = req.body;
-
-//       console.log(JSON.parse(category));
-
-//       if (!Array.isArray(JSON.parse(category)) || category.length === 0) {
-//         return res
-//           .status(400)
-//           .json({ message: "At least one category is required." });
-//       }
-
-//       let updateData = { title, author, category, price, points: price * 4 };
-//       updateData.category = JSON.parse(category);
-
-//       if (req.file) {
-//         updateData.bookCoverImage = req.file.path;
-//       }
-
-//       const updatedBook = await Book.findByIdAndUpdate(
-//         req.params.id,
-//         updateData,
-//         {
-//           new: true,
-//           runValidators: true,
-//         }
-//       );
-
-//       if (!updatedBook) {
-//         return res.status(404).json({ message: "Book not found." });
-//       }
-
-//       // Only allow the book owner or an admin to update
-//       if (
-//         updatedBook.userId.toString() !== req.user.id &&
-//         req.user.role !== "admin"
-//       ) {
-//         return res.status(403).json({ message: "Unauthorized" });
-//       }
-
-//       res
-//         .status(200)
-//         .json({ message: "Book updated successfully", updatedBook });
-//     } catch (error) {
-//       console.error("Error updating book:", error);
-//       res.status(500).json({ message: "Failed to update book" });
-//     }
-//   }
-// );
 
 router.put(
   "/updateBook/:id",
@@ -637,24 +622,6 @@ router.get("/getCategories", async (req, res) => {
   }
 });
 
-/////////////////////// suggestions provided by gpt //////////////////////
-
-router.post("/addCategory", verifyToken, async (req, res) => {
-  const { name } = req.body;
-
-  if (!name) {
-    return res.status(400).json({ error: "Category name is required" });
-  }
-
-  try {
-    const category = new Category({ name });
-    const savedCategory = await category.save();
-    res.status(201).json(savedCategory);
-  } catch (err) {
-    console.error("Error creating category:", err);
-    res.status(500).json({ error: "Failed to create category" });
-  }
-});
 router.delete("/deleteBook/:id", verifyToken, async (req, res) => {
   try {
     const bookId = req.params.id;
@@ -675,6 +642,25 @@ router.delete("/deleteBook/:id", verifyToken, async (req, res) => {
   } catch (error) {
     console.error("Error deleting book:", error);
     res.status(500).json({ message: "Failed to delete book" });
+  }
+});
+
+/////////////////////// suggestions provided by gpt //////////////////////
+
+router.post("/addCategory", verifyToken, async (req, res) => {
+  const { name } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: "Category name is required" });
+  }
+
+  try {
+    const category = new Category({ name });
+    const savedCategory = await category.save();
+    res.status(201).json(savedCategory);
+  } catch (err) {
+    console.error("Error creating category:", err);
+    res.status(500).json({ error: "Failed to create category" });
   }
 });
 
@@ -729,22 +715,6 @@ router.put("/updateProfile", verifyToken, async (req, res) => {
   } catch (error) {
     console.error("Error updating profile:", error);
     res.status(500).json({ message: "Failed to update profile" });
-  }
-});
-router.post("/createCategory", verifyToken, isAdmin, async (req, res) => {
-  const { name } = req.body;
-
-  if (!name) {
-    return res.status(400).json({ message: "Category name is required" });
-  }
-
-  try {
-    const category = new Category({ name });
-    await category.save();
-    res.status(201).json(category);
-  } catch (error) {
-    console.error("Error creating category:", error);
-    res.status(500).json({ message: "Failed to create category" });
   }
 });
 
