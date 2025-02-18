@@ -16,6 +16,7 @@ const Book = require("../models/Book");
 const Order = require("../models/Order");
 const Category = require("../models/Category");
 const Purchase = require("../models/Purchase");
+const Review = require("../models/Review");
 
 const router = express.Router();
 
@@ -166,10 +167,10 @@ router.get("/dashboard", verifyToken, async (req, res) => {
     const userId = new mongoose.Types.ObjectId(req.user.id);
     const booksListed = await Book.countDocuments({ userId });
     console.log("boksListed" + booksListed);
-    const booksSold = await Sale.countDocuments({ userId });
+    const booksSold = await Sale.countDocuments({ sellerId: userId });
     console.log("boksSold" + booksSold);
     const earnings = await Sale.aggregate([
-      { $match: { userId } },
+      { $match: { sellerId: userId } },
       { $group: { _id: null, total: { $sum: "$points" } } },
     ]);
     console.log("earnings" + earnings);
@@ -358,7 +359,7 @@ router.get("/:id/read", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const purchase = await Purchase.findOne({
-      userId: req.user.id,
+      buyerId: req.user.id,
       bookId: id,
     });
     if (!purchase) {
@@ -381,7 +382,7 @@ router.get("/:id/read", verifyToken, async (req, res) => {
 router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
   try {
     const bookId = req.params.id;
-    const userId = req.user.id;
+    const buyerId = req.user.id;
 
     if (!bookId) {
       return res.status(400).json({ message: "Book ID is required." });
@@ -394,7 +395,7 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
     }
 
     // Check if user has already purchased this book
-    const existingPurchase = await Purchase.findOne({ userId, bookId });
+    const existingPurchase = await Purchase.findOne({ buyerId, bookId });
 
     if (existingPurchase) {
       return res.status(400).json({
@@ -403,7 +404,7 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
     }
 
     // Fetch user details using userId
-    const user = await User.findById(userId);
+    const user = await User.findById(buyerId);
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
@@ -424,7 +425,7 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
 
     // Create new purchase record
     const purchase = new Purchase({
-      userId,
+      buyerId,
       bookId,
       pointsSpent: book.points,
     });
@@ -432,7 +433,8 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
     await purchase.save();
     const sale = new Sale({
       bookId,
-      userId,
+      buyerId,
+      sellerId: book.userId,
       points: book.points,
     });
     await sale.save();
@@ -462,7 +464,7 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
 /////////////////////////////////   Not implimented ///////////////////////////////
 router.post("/addReview/:bookId", verifyToken, async (req, res) => {
   try {
-    const { rating, comment } = req.body;
+    const { rating, comment } = req.body.reviewData;
     const review = new Review({
       bookId: req.params.bookId,
       userId: req.user.id,
@@ -497,8 +499,10 @@ router.get("/getReviews/:bookId", async (req, res) => {
 
 router.get("/myPurchases", verifyToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const purchases = await Purchase.find({ userId }).populate("bookId").exec();
+    const buyerId = req.user.id;
+    const purchases = await Purchase.find({ buyerId })
+      .populate("bookId")
+      .exec();
 
     if (!purchases.length) {
       return res.status(404).json({ message: "No purchased books found." });
@@ -695,23 +699,27 @@ router.get("/getMyOrders", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Failed to fetch orders" });
   }
 });
+
 router.put("/updateProfile", verifyToken, async (req, res) => {
-  const { username, email, password } = req.body;
   try {
+    const { username, password } = req.body.updateData;
+    console.log(req.body);
+    if (!mongoose.Types.ObjectId.isValid(req.user.id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
-    user.username = username || user.username;
-    user.email = email || user.email;
-    if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      user.password = hashedPassword;
+    if (username && username.trim() !== "") {
+      user.username = username;
     }
-
-    const updatedUser = await user.save();
-    res.status(200).json(updatedUser);
+    if (password && password.trim() !== "") {
+      // const hashedPassword = await bcrypt.hash(password, 10);
+      user.password = password;
+    }
+    await user.save();
+    res.status(200).json({ message: "Profile updated successfully", user });
   } catch (error) {
     console.error("Error updating profile:", error);
     res.status(500).json({ message: "Failed to update profile" });

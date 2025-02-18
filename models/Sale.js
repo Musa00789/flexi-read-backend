@@ -5,7 +5,11 @@ const saleSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Book",
   },
-  userId: {
+  sellerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
+  buyerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
