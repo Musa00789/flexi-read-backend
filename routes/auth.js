@@ -726,6 +726,21 @@ router.put("/updateProfile", verifyToken, async (req, res) => {
   }
 });
 
+router.put("/changeRole", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    user.role = "Author";
+    await user.save();
+    res.status(200).json({ message: "Role changed successfully", user });
+  } catch (error) {
+    console.error("Error changing role:", error);
+    res.status(500).json({ message: "Failed to change role" });
+  }
+});
+
 router.delete("/deleteCategory/:id", verifyToken, isAdmin, async (req, res) => {
   const { id } = req.params;
 
