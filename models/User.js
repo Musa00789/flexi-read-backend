@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   points: { type: Number, default: 400 },
+  aboutAuthor: { type: String, default: "" },
   profilePicture: { type: String, default: "" },
   role: {
     type: String,
@@ -16,8 +17,8 @@ const userSchema = new mongoose.Schema({
       "reader",
       "Author",
       "author",
-      "User",
-      "user",
+      // "User",
+      // "user",
     ],
     default: "Reader",
   },

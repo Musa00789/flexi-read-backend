@@ -6,6 +6,8 @@ const fs = require("fs");
 const multer = require("multer");
 const path = require("path");
 const mongoose = require("mongoose");
+const nodemailer = require("nodemailer");
+require("dotenv").config();
 
 const User = require("../models/User");
 const { verifyToken, isAdmin } = require("../middlewares/auth");
@@ -29,6 +31,14 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const uniqueName = `${Date.now()}-${file.originalname}`;
     cb(null, uniqueName);
+  },
+});
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL,
+    pass: process.env.PASSWORD,
   },
 });
 
@@ -73,6 +83,35 @@ router.post("/login", async (req, res) => {
     );
     console.log("user logged in successfully");
     res.status(200).send({ token });
+  } catch (error) {
+    console.log(error.message);
+    res.status(500).send({ message: error.message });
+  }
+});
+
+router.get("/forgotPassword", async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).send({ message: "User not found." });
+
+    const mailOptions = {
+      from: process.env.EMAIL,
+      to: user.email,
+      subject: "Forgot Password",
+      text: "Hello, this is a test email from Node.js using Nodemailer.",
+    };
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+
+    res
+      .status(200)
+      .send({ message: "Forgot Password Email sent successfully." });
   } catch (error) {
     console.log(error.message);
     res.status(500).send({ message: error.message });
@@ -250,6 +289,7 @@ router.post(
       const newBook = new Book({
         title,
         author,
+        aboutBook,
         category,
         price,
         rating,
@@ -325,6 +365,29 @@ router.get("/getAllBooks", async (req, res) => {
   } catch (error) {
     console.error("Error fetching books:", error);
     res.status(500).json({ message: "Failed to fetch books" });
+  }
+});
+
+router.get("/randomBooks", verifyToken, async (req, res) => {
+  try {
+    const books = await Book.aggregate([{ $sample: { size: 15 } }]);
+
+    const booksWithUrls = books.map((book) => {
+      const bookObj = book.toObject ? book.toObject() : book;
+      return {
+        ...bookObj,
+        bookCoverImage: bookObj.bookCoverImage
+          ? `${req.protocol}://${req.get("host")}/uploads/${
+              bookObj.userId
+            }/${path.basename(bookObj.bookCoverImage)}`
+          : fs.readFileSync(bookObj.bookCoverImage).toString("base64"),
+      };
+    });
+
+    res.status(200).json(booksWithUrls);
+  } catch (error) {
+    console.error("Error fetching random books:", error);
+    res.status(500).json({ message: "Failed to fetch random books" });
   }
 });
 
@@ -461,7 +524,6 @@ router.post("/purchaseBook/:id", verifyToken, async (req, res) => {
   }
 });
 
-/////////////////////////////////   Not implimented ///////////////////////////////
 router.post("/addReview/:bookId", verifyToken, async (req, res) => {
   try {
     const { rating, comment } = req.body.reviewData;
@@ -484,7 +546,7 @@ router.post("/addReview/:bookId", verifyToken, async (req, res) => {
 router.get("/getReviews/:bookId", async (req, res) => {
   try {
     const reviews = await Review.find({ bookId: req.params.bookId })
-      .populate("userId", "username") // populate user details (only username)
+      .populate("userId", "username")
       .sort({ createdAt: -1 });
     res.status(200).json(reviews);
   } catch (error) {
@@ -494,8 +556,6 @@ router.get("/getReviews/:bookId", async (req, res) => {
       .json({ message: "Failed to fetch reviews", error: error.message });
   }
 });
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 router.get("/myPurchases", verifyToken, async (req, res) => {
   try {
@@ -534,7 +594,7 @@ router.put(
   upload.fields([{ name: "bookCoverImage", maxCount: 1 }]),
   async (req, res) => {
     try {
-      const { title, author, category, price } = req.body;
+      const { title, author, aboutBook, category, price } = req.body;
       const updateData = {};
 
       // Only update title if provided and non-empty
@@ -545,6 +605,9 @@ router.put(
       // Only update author if provided and non-empty
       if (author && author.trim() !== "") {
         updateData.author = author;
+      }
+      if (aboutBook && aboutBook.trim() !== "") {
+        updateData.aboutBook = aboutBook;
       }
       const parsedCategory = JSON.parse(category);
 
@@ -702,7 +765,7 @@ router.get("/getMyOrders", verifyToken, async (req, res) => {
 
 router.put("/updateProfile", verifyToken, async (req, res) => {
   try {
-    const { username, password } = req.body.updateData;
+    const { username, aboutAuthor, password } = req.body.updateData;
     console.log(req.body);
     if (!mongoose.Types.ObjectId.isValid(req.user.id)) {
       return res.status(400).json({ message: "Invalid user ID" });
@@ -713,6 +776,9 @@ router.put("/updateProfile", verifyToken, async (req, res) => {
     }
     if (username && username.trim() !== "") {
       user.username = username;
+    }
+    if (aboutAuthor && aboutAuthor.trim() !== "") {
+      user.aboutAuthor = aboutAuthor;
     }
     if (password && password.trim() !== "") {
       // const hashedPassword = await bcrypt.hash(password, 10);
@@ -766,6 +832,7 @@ router.get("/getAllPurchases", verifyToken, isAdmin, async (req, res) => {
     res.status(500).json({ message: "Failed to fetch purchases" });
   }
 });
+
 router.get("/downloadBook/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
