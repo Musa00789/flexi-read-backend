@@ -8,6 +8,7 @@ const path = require("path");
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
+const axios = require("axios");
 
 const User = require("../models/User");
 const { verifyToken, isAdmin } = require("../middlewares/auth");
@@ -850,6 +851,21 @@ router.get("/downloadBook/:id", verifyToken, async (req, res) => {
   } catch (error) {
     console.error("Error downloading book file:", error);
     res.status(500).json({ message: "Failed to download book" });
+  }
+});
+
+router.post("/summarize", verifyToken, async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    const response = await axios.post("http://localhost:5001/summarize", {
+      text,
+    });
+
+    res.json({ summary: response.data.summary });
+  } catch (error) {
+    console.error("Summarization error:", error);
+    res.status(500).json({ error: "Summarization failed" });
   }
 });
 
