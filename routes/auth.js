@@ -9,6 +9,7 @@ const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 const axios = require("axios");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const User = require("../models/User");
 const { verifyToken, isAdmin } = require("../middlewares/auth");
@@ -20,6 +21,7 @@ const Order = require("../models/Order");
 const Category = require("../models/Category");
 const Purchase = require("../models/Purchase");
 const Review = require("../models/Review");
+// const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const router = express.Router();
 
@@ -866,6 +868,28 @@ router.post("/summarize", verifyToken, async (req, res) => {
   } catch (error) {
     console.error("Summarization error:", error);
     res.status(500).json({ error: "Summarization failed" });
+  }
+});
+
+/////// Stripe Payment Route ////
+router.post("/payment", verifyToken, async (req, res) => {
+  const { token, amount } = req.body;
+  try {
+    console.log("Payment amount:", amount);
+    const charge = await stripe.paymentIntents.create({
+      amount: amount * 100,
+      currency: "usd",
+      automatic_payment_methods: { enabled: true },
+    });
+
+    const user = await User.findById(req.user.id);
+    user.points += parseInt(amount * 4);
+    await user.save();
+
+    res.json({ success: true, charge, user });
+  } catch (error) {
+    console.error("Payment failed:", error);
+    res.status(500).json({ message: "Payment failed" });
   }
 });
 

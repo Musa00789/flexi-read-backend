@@ -4,7 +4,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    
     "start": "concurrently \"nodemon index.js\" \"python summarize.py\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -21,6 +20,7 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.10.0",
     "nodemon": "^3.1.9",
-    "pdfkit": "^0.16.0"
+    "pdfkit": "^0.16.0",
+    "stripe": "^18.0.0"
   }
 }
