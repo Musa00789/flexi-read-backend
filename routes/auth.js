@@ -272,7 +272,7 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      const { title, author, category, price, rating } = req.body;
+      const { title, author, aboutBook, category, price, rating } = req.body;
       const file = req.files.file ? req.files.file[0] : null;
       const coverImage = req.files.bookCoverImage
         ? req.files.bookCoverImage[0]
