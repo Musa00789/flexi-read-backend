@@ -92,7 +92,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.get("/forgotPassword", async (req, res) => {
+router.post("/forgotPassword", async (req, res) => {
   const { email } = req.body;
   try {
     const user = await User.findOne({ email });
