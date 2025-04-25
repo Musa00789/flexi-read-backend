@@ -892,5 +892,19 @@ router.post("/payment", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Payment failed" });
   }
 });
+// AI CHAT API
+router.post("/api/chat", verifyToken, async (req, res) => {
+  const { session_id, message } = req.body;
+  try {
+    const resp = await axios.post(`http://localhost:5001/chat`, {
+      session_id,
+      message,
+    });
+    res.json(resp.data);
+  } catch (err) {
+    console.error("Chat proxy error", err);
+    res.status(500).json({ error: "Chat service unavailable" });
+  }
+});
 
 module.exports = router;
